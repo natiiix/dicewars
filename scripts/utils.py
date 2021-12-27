@@ -1,10 +1,10 @@
 import os
-import sys
-from subprocess import Popen
-import tempfile
-import numpy as np
 import random
+import sys
+import tempfile
+from subprocess import Popen
 
+import numpy as np
 from dicewars.server.summary import GameSummary
 
 
@@ -114,7 +114,8 @@ def run_ai_only_game(
 
     server_output.seek(0)
     server_output = server_output.read()
-    game_summary = GameSummary.from_repr(server_output)
+    # game_summary = GameSummary.from_repr(server_output)
+    game_summary = GameSummary()
     return game_summary
 
 

@@ -1,19 +1,23 @@
 import json
-from json.decoder import JSONDecodeError
 import logging
+import pickle
 import random
-import numpy as np
 import socket
 import sys
+from json.decoder import JSONDecodeError
+from time import time
 
+import numpy as np
+
+from .board import Board
 from .player import Player
-
 from .summary import GameSummary
 
 
 class Game:
     """Instance of the game
     """
+
     def __init__(self, board, area_ownership, players, game_config, addr, port, nicknames_order):
         """Initialize game and connect clients
 
@@ -78,6 +82,33 @@ class Game:
 
         self.summary = GameSummary()
 
+    def serialize_board(self) -> list:
+        areas_n = len(self.board.areas)
+
+        def sort_by_first_and_get_second(dictionary: dict) -> list:
+            return [pair[1] for pair in sorted(dictionary.items(), key=lambda pair: pair[0])]
+
+        owner_dict = {}
+        dice_dict = {}
+        neighbour_dict = {(x + 1, y + 1): 0 for x in range(areas_n) for y in range(x + 1, areas_n)}
+
+        for area in self.board.areas.values():
+            owner_dict[area.name] = area.owner_name
+            dice_dict[area.name] = area.dice
+            for neighbour in area.adjacent_areas_names:
+                index = (area.name, neighbour)
+                if index in neighbour_dict:
+                    neighbour_dict[index] = 1
+
+        flat_owners = sort_by_first_and_get_second(owner_dict)
+        flat_dice = sort_by_first_and_get_second(dice_dict)
+        flat_neighbours = sort_by_first_and_get_second(neighbour_dict)
+
+        largest_regions = [max([len(reg) for reg in self.board.get_players_regions(player)], default=0)
+                           for player in range(1, self.number_of_players + 1)]
+
+        return flat_owners + flat_dice + flat_neighbours + largest_regions
+
     def run(self):
         """Main loop of the game
         """
@@ -85,12 +116,22 @@ class Game:
             for i in range(1, self.number_of_players + 1):
                 player = self.players[i]
                 self.send_message(player, 'game_state')
+
+            board_states = []
+            chicken_dinner = -1
             while True:
                 self.logger.debug("Current player {}".format(self.current_player.get_name()))
                 self.handle_player_turn()
+
+                board_states.append(self.serialize_board())
+
                 if self.check_win_condition():
+                    chicken_dinner = self.summary.winner
                     sys.stdout.write(str(self.summary))
                     break
+
+            with open(f'board_states-{time()}.pickle', 'wb') as f:
+                pickle.dump((board_states, chicken_dinner, len(self.board.areas)), f)
 
         except KeyboardInterrupt:
             self.logger.info("Game interrupted.")
@@ -128,7 +169,8 @@ class Game:
     def handle_player_turn(self):
         """Handle clients message and carry out the action
         """
-        self.logger.debug("Handling player {} ({}) turn".format(self.current_player.get_name(), self.current_player.nickname))
+        self.logger.debug("Handling player {} ({}) turn".format(
+            self.current_player.get_name(), self.current_player.nickname))
         player = self.current_player.get_name()
         msg = self.get_message(player)
 
@@ -387,7 +429,8 @@ class Game:
             True if a player has won, False otherwise
         """
         if self.nb_consecutive_end_of_turns // self.nb_players_alive == self.max_pass_rounds:
-            self.logger.info("Game cancelled because the limit of {} rounds of passing has been reached".format(self.max_pass_rounds))
+            self.logger.info(
+                "Game cancelled because the limit of {} rounds of passing has been reached".format(self.max_pass_rounds))
             for p in self.players.values():
                 if p.get_number_of_areas() > 0:
                     self.eliminate_player(p.get_name())
@@ -396,7 +439,8 @@ class Game:
             return True
 
         if self.nb_battles == self.max_battles_per_game:
-            self.logger.info("Game cancelled because the limit of {} battles has been reached".format(self.max_battles_per_game))
+            self.logger.info("Game cancelled because the limit of {} battles has been reached".format(
+                self.max_battles_per_game))
             for p in self.players.values():
                 if p.get_number_of_areas() > 0:
                     self.eliminate_player(p.get_name())
@@ -413,7 +457,7 @@ class Game:
         return False
 
     def process_win(self, player_nick, player_name):
-        self.summary.set_winner(player_nick)
+        self.summary.set_winner(player_name)
         self.logger.info("Player {} ({}) wins!".format(player_nick, player_name))
         for i in self.players:
             self.send_message(self.players[i], 'game_end', winner=player_name)
@@ -630,7 +674,8 @@ class Game:
         self.set_first_player()
 
     def report_player_order(self):
-        self.logger.info('Player order: {}'.format([(name, self.players[name].nickname) for name in self.players_order]))
+        self.logger.info('Player order: {}'.format(
+            [(name, self.players[name].nickname) for name in self.players_order]))
 
 
 class UnlimitedDeployment:
