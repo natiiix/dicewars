@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import pickle
 import random
 import socket
@@ -12,6 +13,10 @@ import numpy as np
 from .board import Board
 from .player import Player
 from .summary import GameSummary
+
+
+def sort_by_first_and_get_second(dictionary: dict) -> list:
+    return [pair[1] for pair in sorted(dictionary.items(), key=lambda pair: pair[0])]
 
 
 class Game:
@@ -62,7 +67,7 @@ class Game:
         elif deployment_method == 'limited':
             self.max_deployed_dice = LimitedDeployment(self.max_dice_per_area)
         else:
-            raise ValueError(f'Unknown deployement method "{deployment_method}"')
+            raise ValueError(f'Unknown deployment method "{deployment_method}"')
 
         self.create_socket()
 
@@ -83,31 +88,23 @@ class Game:
         self.summary = GameSummary()
 
     def serialize_board(self) -> list:
-        areas_n = len(self.board.areas)
-
-        def sort_by_first_and_get_second(dictionary: dict) -> list:
-            return [pair[1] for pair in sorted(dictionary.items(), key=lambda pair: pair[0])]
-
         owner_dict = {}
         dice_dict = {}
-        neighbour_dict = {(x + 1, y + 1): 0 for x in range(areas_n) for y in range(x + 1, areas_n)}
 
         for area in self.board.areas.values():
             owner_dict[area.name] = area.owner_name
             dice_dict[area.name] = area.dice
-            for neighbour in area.adjacent_areas_names:
-                index = (area.name, neighbour)
-                if index in neighbour_dict:
-                    neighbour_dict[index] = 1
 
         flat_owners = sort_by_first_and_get_second(owner_dict)
         flat_dice = sort_by_first_and_get_second(dice_dict)
-        flat_neighbours = sort_by_first_and_get_second(neighbour_dict)
 
         largest_regions = [max([len(reg) for reg in self.board.get_players_regions(player)], default=0)
                            for player in range(1, self.number_of_players + 1)]
 
-        return flat_owners + flat_dice + flat_neighbours + largest_regions
+        current_player_one_hot = [int(player == self.current_player.name)
+                                  for player in range(1, self.number_of_players + 1)]
+
+        return current_player_one_hot + flat_owners + flat_dice + largest_regions
 
     def run(self):
         """Main loop of the game
@@ -117,7 +114,7 @@ class Game:
                 player = self.players[i]
                 self.send_message(player, 'game_state')
 
-            board_states = []
+            board_states = [self.serialize_board()]
             chicken_dinner = -1
             while True:
                 self.logger.debug("Current player {}".format(self.current_player.get_name()))
@@ -130,8 +127,21 @@ class Game:
                     sys.stdout.write(str(self.summary))
                     break
 
-            with open(f'board_states-{time()}.pickle', 'wb') as f:
-                pickle.dump((board_states, chicken_dinner, len(self.board.areas)), f)
+            areas_n = len(self.board.areas)
+            neighbour_dict = {(x + 1, y + 1): 0 for x in range(areas_n) for y in range(x + 1, areas_n)}
+            for area in self.board.areas.values():
+                for neighbour in area.adjacent_areas_names:
+                    index = (area.name, neighbour)
+                    if index in neighbour_dict:
+                        neighbour_dict[index] = 1
+            flat_neighbours = sort_by_first_and_get_second(neighbour_dict)
+
+            PICKLE_PATH = "./supp-xkoste12/data/"
+            os.makedirs(PICKLE_PATH, exist_ok=True)
+            with open(f"{PICKLE_PATH}game_{time()}.pickle", "wb") as f:
+                winner_one_hot = [int(player == chicken_dinner)
+                                  for player in range(1, self.number_of_players + 1)]
+                pickle.dump((winner_one_hot, flat_neighbours, board_states), f)
 
         except KeyboardInterrupt:
             self.logger.info("Game interrupted.")
