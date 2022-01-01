@@ -114,8 +114,8 @@ def run_ai_only_game(
 
     server_output.seek(0)
     server_output = server_output.read()
-    # game_summary = GameSummary.from_repr(server_output)
-    game_summary = GameSummary()
+    game_summary = GameSummary.from_repr(server_output)
+    # game_summary = GameSummary()
     return game_summary
 
 
@@ -166,12 +166,14 @@ class PlayerPerformance:
         for competitor in self.players:
             his_games = [game for game in games if get_nickname(competitor) in game.participants()]
             if his_games:
-                self.per_competitor_winrate[competitor] = (sum(game.winner == nickname for game in his_games)/len(his_games), len(his_games))
+                self.per_competitor_winrate[competitor] = (
+                    sum(game.winner == nickname for game in his_games)/len(his_games), len(his_games))
             else:
                 self.per_competitor_winrate[competitor] = (float('nan'), len(his_games))
 
     def __str__(self):
-        per_competitor_str = ' '.join('{:.1f}/{}'.format(100.0*winrate[0], winrate[1]) for ai, winrate in self.per_competitor_winrate.items())
+        per_competitor_str = ' '.join(
+            '{:.1f}/{}'.format(100.0*winrate[0], winrate[1]) for ai, winrate in self.per_competitor_winrate.items())
         return '{} {:.2f} % winrate [ {} / {} ] {}'.format(self.name, 100.0*self.winrate, self.nb_wins, self.nb_games, per_competitor_str)
 
     def competitors_header(self):
@@ -196,7 +198,8 @@ class TournamentCombatantsProvider:
         if rare_opponent_ind == pivot_ind:
             rare_opponent_ind = (rare_opponent_ind + 1) % len(self.players)
 
-        possible_competitors = [self.players.index(ai) for ai in self.players if self.players.index(ai) not in [pivot_ind, rare_opponent_ind]]
+        possible_competitors = [self.players.index(ai) for ai in self.players if self.players.index(ai) not in [
+            pivot_ind, rare_opponent_ind]]
         random.shuffle(possible_competitors)
         competitors = possible_competitors[:nb_combatants-2]
 
@@ -225,7 +228,8 @@ class EvaluationCombatantsProvider:
             rare_opponent_ind = np.argmin(self.game_numbers[pivot_ind])
         assert(rare_opponent_ind != pivot_ind)
 
-        possible_competitors = [self.players.index(ai) for ai in self.players if self.players.index(ai) not in [pivot_ind, rare_opponent_ind]]
+        possible_competitors = [self.players.index(ai) for ai in self.players if self.players.index(ai) not in [
+            pivot_ind, rare_opponent_ind]]
         random.shuffle(possible_competitors)
         competitors = possible_competitors[:nb_combatants-2]
 

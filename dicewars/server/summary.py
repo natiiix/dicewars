@@ -36,7 +36,10 @@ class GameSummary:
     def from_repr(cls, str_repr):
         lines = str_repr.split('\n')
 
-        winner = lines[0].split(maxsplit=1)[1]
+        split_line = lines[0].split(maxsplit=1)
+        if len(split_line) < 2:
+            raise Exception(f"{lines}")
+        winner = split_line[1]
         nb_battles = int(lines[1].split()[2])
 
         eliminations = []
